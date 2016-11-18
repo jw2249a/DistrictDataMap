@@ -27,78 +27,82 @@ shpdata <- readOGR(getwd(), "District_Level_Common_Core_of_Data_20132014")
 shpdata1 <- shpdata
 
 # transform data to usable format for leaflet
-
+numlist <- c("01", "02", "04", "05", "06", "08", "09", as.character(10:13), as.character(15:42), as.character(44:51), as.character(53:56))
 i <- 1
-
-while (i <52) {
-
-  shpdata = shpdata1
-
-  shpdata = shpdata[substring(as.numeric(shpdata$STATE2), 1, 4) == i, ]
   
-  x <- rownames(shpdata@data)
+  while (i <52) { 
+    
+  shpdata <- shpdata1
   
-  rownames(shpdata@data) <- c(0:(as.numeric(length(shpdata@data[, 1]))-1))
+  shpdata = shpdata[substring(shpdata$GEOID, 1, 2) == numlist[i], ]
   
+  spssdata <- as.data.frame(spssdata)
+  spssdata$NCESID <-  as.character(spssdata$NCESID)
+  if (i == 3) {
+    i <- i + 1
+  }
+  if (i == 7) {
+    i <- i + 1
+  }
+  if (i < 10) {
+    y <- spssdata$NCESID[substring(spssdata$NCESID, 1, 1) == as.character(i)]
+    y <- y[as.numeric(y) < 1000000]
+  }
+  if (i > 10) {
+    y <- spssdata$NCESID[substring(spssdata$NCESID, 1, 2) == numlist[i]]
+    y <- y[as.numeric(y) > 1000000]
+  }
+  spssdata2 <- subset(spssdata, NCESID %in% y)
   shpdata <- spTransform(shpdata, CRS("+init=epsg:4326"))
 
-# separate district data from mapping data to add spssdata
+  # separate district data from mapping data to add spssdata
 
-  shpDistrictData <- shpdata@data 
-  
-  #change district data GeoID to NCESID
-  
-  shpDistrictData$NCESID <- as.numeric(as.character(shpDistrictData$GEOID))
-  
-  joinedData <- merge(shpDistrictData, spssdata, by = "NCESID", all.x = TRUE)
+  shpDistrictData <- shpdata@data[, c("OBJECTID", "GEOID", "NAME")]
   
   
   # create spatial polygons
   
   shpdata2 <-gSimplify(shpdata, tol = 0.01, topologyPreserve = TRUE)
   
-  shpdata3 <-gSimplify(shpdata, tol = 0.05, topologyPreserve = TRUE)
   
   #change rownames to match data
   
-  rownames(joinedData) <- x
 
   # write the geojson
   
-  shpdata4 <- SpatialPolygonsDataFrame(shpdata2, data = joinedData)
-  shpdata5 <- SpatialPolygonsDataFrame(shpdata3, data = joinedData)
+  shpdata4 <- SpatialPolygonsDataFrame(shpdata2, data = shpDistrictData)
   
-  # make data way smaller
   
-  shpdata4@data <- shpdata4@data[c('NAME', 'STATE2', 'ADJPPE')]
-  shpdata5@data <- shpdata5@data[c("NAME", "STATE2", "ADJPPE")]
+  shpdata4@data$NCESID <- as.numeric(as.character(shpdata4$GEOID))
   
-
-
+  shpdata4@data <- merge(shpdata4@data, spssdata2, by="NCESID", all.x = TRUE)
+  
+  shpdata4@data[is.na(shpdata4@data$NCESID)] <- 0
+  
+  shpdata4@data <-shpdata4@data[order(shpdata4@data$OBJECTID), ] 
+  
   writeOGR(shpdata4, paste0("MapFolder/Shapefile/District_Level_Common_Core_of_Data_20132014", i, ".geojson"), layer = "", driver = "GeoJSON")
-  writeOGR(shpdata5, paste0("MapFolder/Shapefile/District_Level_Common_Core_of_Data_20132014reduced", i, ".geojson"), layer = "", driver = "GeoJSON")
-
+ 
 # lets quantile the data now for coloring
 
-quants <- round(quantile(shpdata4$ADJPPE, probs = seq(0, 1, 0.20), na.rm = TRUE), 0)
-quants[1]<-0
-quants
-
+  quants <- round(quantile(shpdata4$ADJPPE, probs = seq(0, 1, 0.20), na.rm = TRUE), 0)
+  quants[1]<-0
+  quants
 
 # Lets get the look down
 
-hoverover <- c("NAME", "ADJPPE")
+  hoverover <- c("NAME", "ADJPPE")
 
-style <- styleGrad(prop="ADJPPE", breaks=quants, right=FALSE, style.par = "col",
+  style <- styleGrad(prop="ADJPPE", breaks=quants, right=FALSE, style.par = "col",
                style.val = rev(heat.colors(5)), leg = "Per-Pupil Expenditures (RAW)", lwd = 1)
 
 
 # creates the map
 
-map <- leaflet(data = paste0("MapFolder/ShapeFile/District_Level_Common_Core_of_Data_20132014", i, ".geojson"), dest = "MapFolder/Shapefile", style = style,
-             title = paste0("index ", shpdata4@data$STATE2[i]), base.map="osm",
+  map <- leaflet(data = paste0("MapFolder/ShapeFile/District_Level_Common_Core_of_Data_20132014", i, ".geojson"), dest = "MapFolder/Shapefile", style = style,
+             title = paste0("index ", i), base.map="osm",
              incl.data = TRUE,  popup = hoverover)
-i <- i+1
+  i <- i+1
 }
 
 
