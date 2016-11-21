@@ -10,6 +10,9 @@ library(leafletR)
 library(rgdal)
 library(rgeos)
 library(sp)
+library(geojsonio)
+
+
 url <- "http://data.deptofed.opendata.arcgis.com/datasets/1e1426f35aef40c48ee8f20e0b9e5bac_0.zip"
 
 content <- download.file(url, "CCD1314.zip")
@@ -34,30 +37,57 @@ i <- 1
     
   shpdata <- shpdata1
   
-  shpdata = shpdata[substring(shpdata$GEOID, 1, 2) == numlist[i], ]
+  
   
   spssdata <- as.data.frame(spssdata)
+  spssdata$ADJPPE <- round(spssdata$ADJPPE, digits = 0)
   spssdata$NCESID <-  as.character(spssdata$NCESID)
-  if (i == 3) {
-    i <- i + 1
-  }
+  
   if (i == 7) {
-    i <- i + 1
-  }
-  if (i < 10) {
-    y <- spssdata$NCESID[substring(spssdata$NCESID, 1, 1) == as.character(i)]
+    shpdata = shpdata[substring(shpdata$GEOID, 1, 2) == numlist[7], ]
+    y <- spssdata$NCESID[substring(spssdata$NCESID, 1, 1) == as.character(9)]
     y <- y[as.numeric(y) < 1000000]
   }
-  if (i > 10) {
+  if (i < 3) {
+    y <- spssdata$NCESID[substring(spssdata$NCESID, 1, 1) == as.character(i)]
+    y <- y[as.numeric(y) < 1000000]
+    shpdata = shpdata[substring(shpdata$GEOID, 1, 2) == numlist[i], ]
+  }
+  if (i >= 8) {
     y <- spssdata$NCESID[substring(spssdata$NCESID, 1, 2) == numlist[i]]
     y <- y[as.numeric(y) > 1000000]
+    shpdata = shpdata[substring(shpdata$GEOID, 1, 2) == numlist[i], ]
   }
+  if (i == 3) {
+    shpdata = shpdata[substring(shpdata$GEOID, 1, 2) == numlist[3], ]
+    y <- spssdata$NCESID[substring(spssdata$NCESID, 1, 1) == as.character(4)]
+    y <- y[as.numeric(y) < 1000000]
+  }
+  if (i == 4) {
+    shpdata = shpdata[substring(shpdata$GEOID, 1, 2) == numlist[4], ]
+    y <- spssdata$NCESID[substring(spssdata$NCESID, 1, 1) == as.character(5)]
+    y <- y[as.numeric(y) < 1000000]
+  }
+  if (i == 5) {
+    shpdata = shpdata[substring(shpdata$GEOID, 1, 2) == numlist[5], ]
+    y <- spssdata$NCESID[substring(spssdata$NCESID, 1, 1) == as.character(6)]
+    y <- y[as.numeric(y) < 1000000]
+  }
+  if (i == 6) {
+    shpdata = shpdata[substring(shpdata$GEOID, 1, 2) == numlist[6], ]
+    y <- spssdata$NCESID[substring(spssdata$NCESID, 1, 1) == as.character(8)]
+    y <- y[as.numeric(y) < 1000000]
+  }
+ 
   spssdata2 <- subset(spssdata, NCESID %in% y)
+  
+  spssdata2 <- spssdata2[c("NCESID", "DISTRICTNAME", "ADJPPE")]
+  
   shpdata <- spTransform(shpdata, CRS("+init=epsg:4326"))
 
   # separate district data from mapping data to add spssdata
 
-  shpDistrictData <- shpdata@data[, c("OBJECTID", "GEOID", "NAME")]
+  shpDistrictData <- shpdata@data[, c("OBJECTID", "GEOID")]
   
   
   # create spatial polygons
@@ -65,45 +95,46 @@ i <- 1
   shpdata2 <-gSimplify(shpdata, tol = 0.01, topologyPreserve = TRUE)
   
   
-  #change rownames to match data
-  
-
   # write the geojson
-  
   shpdata4 <- SpatialPolygonsDataFrame(shpdata2, data = shpDistrictData)
   
+  shpdata5 <- lapply(shpdata4@data, function(x) {
+    x[sapply(x, is.null)] <- NA
+    unlist(x)
+  })
+  shpdata5$NCESID <- as.numeric(as.character(shpdata5$GEOID))
+  shpdata5 <- lapply(shpdata5, function(x) {
+    x[sapply(x, is.null)] <- NA
+    unlist(x)
+  })
+  shpdata5 <- merge(shpdata5, spssdata2, by = "NCESID", all.x = TRUE)
+  shpdata5 <- shpdata5[c("OBJECTID", "DISTRICTNAME", "ADJPPE")]
+  shpdata5 <- merge(shpdata4, shpdata5, by = "OBJECTID", all.x = TRUE)
   
-  shpdata4@data$NCESID <- as.numeric(as.character(shpdata4$GEOID))
+  writeOGR(shpdata5, paste0("MapFolder/Shapefile/District_Level_Common_Core_of_Data_20132014", i, ".geojson"), layer = "", driver = "GeoJSON")
   
-  shpdata4@data <- merge(shpdata4@data, spssdata2, by="NCESID", all.x = TRUE)
-  
-  shpdata4@data[is.na(shpdata4@data$NCESID)] <- 0
-  
-  shpdata4@data <-shpdata4@data[order(shpdata4@data$OBJECTID), ] 
-  
-  writeOGR(shpdata4, paste0("MapFolder/Shapefile/District_Level_Common_Core_of_Data_20132014", i, ".geojson"), layer = "", driver = "GeoJSON")
- 
 # lets quantile the data now for coloring
 
-  quants <- round(quantile(shpdata4$ADJPPE, probs = seq(0, 1, 0.20), na.rm = TRUE), 0)
+  quants <- round(quantile(spssdata$ADJPPE, probs = seq(0, 1, 0.20), na.rm = TRUE), 0)
   quants[1]<-0
-  quants
-
 # Lets get the look down
 
-  hoverover <- c("NAME", "ADJPPE")
+  hoverover <- c("DISTRICTNAME", "ADJPPE")
+  colouryform <- c("#17414B", "#5AB2C5", "#F7969C","#BD4F4D", "#7A2425")
+  style <- styleGrad(prop="ADJPPE", breaks=c(quants), right=FALSE, style.par = "col",
+               style.val = rev(colouryform), fill.alpha = 1, leg = "Per-Pupil Expenditures", lwd = 2, alpha = 1, col = "white")
 
-  style <- styleGrad(prop="ADJPPE", breaks=quants, right=FALSE, style.par = "col",
-               style.val = rev(heat.colors(5)), leg = "Per-Pupil Expenditures (RAW)", lwd = 1)
-
-
-# creates the map
-
-  map <- leaflet(data = paste0("MapFolder/ShapeFile/District_Level_Common_Core_of_Data_20132014", i, ".geojson"), dest = "MapFolder/Shapefile", style = style,
+  # creates the map
+  
+  map <- leaflet(data = paste0("MapFolder/ShapeFile/District_Level_Common_Core_of_Data_20132014", i, ".geojson"), dest = "MapFolder/Shapefile",
              title = paste0("index ", i), base.map="osm",
-             incl.data = TRUE,  popup = hoverover)
+             incl.data = TRUE, style = style,  popup = hoverover)
+ 
+  
+  
   i <- i+1
 }
+
 
 
 
